@@ -148,9 +148,181 @@ export type WorkflowError =
   | ThreadWorkflowError
   | UnsupportedWorkflowError;
 
+export type MicrosoftSyncParams = {
+  subscriptionId: string;
+  /**
+   * Optional — when a change notification carries a messageId we can skip the
+   * delta call entirely and sync just that message. When absent (lifecycle
+   * notifications, or batches where Graph elides ids) we fall back to delta.
+   */
+  messageId?: string;
+  changeType?: string;
+};
+
+const DELTA_LINK_KEY = (connectionId: string) => `delta:${connectionId}`;
+
 export class WorkflowRunner extends DurableObject<ZeroEnv> {
   constructor(state: DurableObjectState, env: ZeroEnv) {
     super(state, env);
+  }
+
+  /**
+   * Microsoft-native change-notification consumer. Invoked per notification
+   * batch from the webhook at /a8n/notify/microsoft. Resolves the
+   * subscription-id to a connection, grabs the driver, pulls the messages
+   * that changed since the stored delta link, and hands each one to the
+   * existing ZeroAgent thread-sync path. The delta link is advanced at the
+   * end so subsequent syncs pick up only new changes.
+   */
+  public runMicrosoftSync(params: MicrosoftSyncParams) {
+    return Effect.gen(this, function* () {
+      yield* Console.log('[MSFT_SYNC] start', params);
+
+      // Map subscriptionId -> connectionId. OutlookSubscriptionFactory.subscribe
+      // stored this pairing on subscribe as:
+      //   subscribed_accounts: `${connectionId}__microsoft` -> subscriptionId
+      // We scan by subscriptionId (scoped KV list, not a global sweep).
+      const connectionId = yield* Effect.tryPromise({
+        try: async () => {
+          const list = await this.env.subscribed_accounts.list({ prefix: '' });
+          for (const key of list.keys) {
+            // Only the base per-connection key carries the raw subscription id
+            // as its value. Clientstate / expiresAt suffixes are skipped.
+            if (key.name.endsWith('__clientState')) continue;
+            if (key.name.endsWith('__expiresAt')) continue;
+            const value = await this.env.subscribed_accounts.get(key.name);
+            if (value === params.subscriptionId) {
+              const base = key.name.replace(/__microsoft$/, '');
+              return base;
+            }
+          }
+          return null;
+        },
+        catch: (error) => ({ _tag: 'SubscriptionLookupFailed' as const, error }),
+      });
+
+      if (!connectionId) {
+        yield* Console.log('[MSFT_SYNC] subscription not mapped to a connection', params);
+        return 'no connection';
+      }
+      yield* Console.log('[MSFT_SYNC] connection resolved', connectionId);
+
+      // Load connection + build driver.
+      const { db, conn } = createDb(this.env.HYPERDRIVE.connectionString);
+      const connectionData = yield* Effect.tryPromise({
+        try: async () => {
+          const row = await db.query.connection.findFirst({
+            where: eq(connection.id, connectionId),
+          });
+          await conn.end();
+          return row;
+        },
+        catch: (error) => ({ _tag: 'ConnectionLookupFailed' as const, error }),
+      });
+      if (!connectionData) {
+        yield* Console.log('[MSFT_SYNC] connection row missing', connectionId);
+        return 'no connection row';
+      }
+      if (connectionData.providerId !== EProviders.microsoft) {
+        yield* Console.log('[MSFT_SYNC] non-microsoft connection, skipping', {
+          providerId: connectionData.providerId,
+        });
+        return 'wrong provider';
+      }
+
+      // Fast path: notification carries a concrete messageId. Pull it through
+      // ThreadSyncWorker (fetches via the driver + persists to R2) and move
+      // on — no delta round-trip needed.
+      const syncOne = (threadId: string) =>
+        Effect.tryPromise({
+          try: async () => {
+            const worker = this.env.THREAD_SYNC_WORKER.get(
+              this.env.THREAD_SYNC_WORKER.idFromName(connectionId),
+            );
+            await worker.syncThread(connectionData, threadId);
+          },
+          catch: (error) => ({ _tag: 'ThreadSyncFailed' as const, error, id: threadId }),
+        }).pipe(
+          Effect.tapError((error) =>
+            Console.log('[MSFT_SYNC] thread sync failed (continuing)', error),
+          ),
+          Effect.orElse(() => Effect.succeed(null)),
+        );
+
+      if (params.messageId && params.changeType !== 'deleted') {
+        yield* syncOne(params.messageId);
+      }
+
+      // Delta path: pull everything since the stored deltaLink.
+      const storedLink = yield* Effect.tryPromise({
+        try: () => this.env.prompts_storage.get(DELTA_LINK_KEY(connectionId)),
+        catch: () => ({ _tag: 'DeltaLinkReadFailed' as const }),
+      }).pipe(Effect.orElse(() => Effect.succeed<string | null>(null)));
+
+      yield* Console.log('[MSFT_SYNC] delta link', storedLink ? 'present' : 'missing (first sync)');
+
+      const { driver } = yield* Effect.tryPromise({
+        try: async () => ({
+          driver: (await import('./lib/driver')).createDriver(connectionData.providerId, {
+            auth: {
+              userId: connectionData.userId,
+              accessToken: connectionData.accessToken || '',
+              refreshToken: connectionData.refreshToken || '',
+              email: connectionData.email,
+            },
+          }),
+        }),
+        catch: (error) => ({ _tag: 'DriverInstantiateFailed' as const, error }),
+      });
+
+      // Driver interface exposes listMessagesDelta on the Outlook manager
+      // only — cast to pull the extra method without polluting MailManager.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const outlookDriver = driver as any;
+      type DeltaRes = {
+        changed: Array<{ id?: string }>;
+        removed: Array<{ id: string; reason: string }>;
+        nextLink: string | null;
+        deltaLink: string | null;
+      };
+      const deltaResult = yield* Effect.tryPromise({
+        try: async (): Promise<DeltaRes> =>
+          outlookDriver.listMessagesDelta({
+            folder: 'inbox',
+            deltaLink: storedLink ?? undefined,
+          }),
+        catch: (error) => ({ _tag: 'DeltaSyncFailed' as const, error }),
+      });
+      yield* Console.log('[MSFT_SYNC] delta', {
+        changed: deltaResult.changed.length,
+        removed: deltaResult.removed.length,
+        hasNext: !!deltaResult.nextLink,
+        hasDelta: !!deltaResult.deltaLink,
+      });
+
+      // Hand each changed message to the sync worker. Errors are logged and
+      // the loop continues — one bad message shouldn't stall the whole batch.
+      for (const msg of deltaResult.changed) {
+        if (!msg.id) continue;
+        yield* syncOne(msg.id);
+      }
+
+      // Persist the new delta link so the next cycle picks up changes only.
+      // nextLink means more data within this sync cycle; deltaLink means we're
+      // caught up — store whichever is present.
+      const advanceTo = deltaResult.nextLink ?? deltaResult.deltaLink ?? storedLink;
+      if (advanceTo) {
+        yield* Effect.tryPromise({
+          try: () => this.env.prompts_storage.put(DELTA_LINK_KEY(connectionId), advanceTo),
+          catch: (error) => ({ _tag: 'DeltaLinkWriteFailed' as const, error }),
+        }).pipe(
+          Effect.tapError((error) => Console.log('[MSFT_SYNC] delta link write failed', error)),
+          Effect.orElse(() => Effect.succeed(null)),
+        );
+      }
+
+      return `ok: changed=${deltaResult.changed.length} removed=${deltaResult.removed.length}`;
+    }).pipe(Effect.provide(loggerLayer), Effect.runPromise);
   }
 
   /**

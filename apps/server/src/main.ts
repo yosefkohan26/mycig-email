@@ -1144,26 +1144,51 @@ export default class Entry extends WorkerEntrypoint<ZeroEnv> {
 
         await Promise.all(
           batch.messages.map(async (msg: any) => {
+            const providerId = msg.body.providerId;
             const span = tracer.startSpan('thread_queue_processing', {
               attributes: {
-                'provider.id': msg.body.providerId,
-                'history.id': msg.body.historyId,
-                'subscription.name': msg.body.subscriptionName,
+                'provider.id': providerId,
                 'queue.name': batch.queue,
               },
             });
 
             try {
-              const providerId = msg.body.providerId;
-              const historyId = msg.body.historyId;
-              const subscriptionName = msg.body.subscriptionName;
-
               const workflowRunner = env.WORKFLOW_RUNNER.get(env.WORKFLOW_RUNNER.newUniqueId());
-              const result = await workflowRunner.runMainWorkflow({
-                providerId,
-                historyId,
-                subscriptionName,
-              });
+              let result: unknown;
+
+              if (providerId === EProviders.microsoft) {
+                // Shape produced by /a8n/notify/microsoft (the Graph webhook):
+                //   { providerId, subscriptionId, resource, changeType, messageId }
+                span.setAttributes({
+                  'subscription.id': msg.body.subscriptionId ?? 'missing',
+                  'change.type': msg.body.changeType ?? 'unknown',
+                });
+                if (!msg.body.subscriptionId) {
+                  console.warn('[THREAD_QUEUE] microsoft msg missing subscriptionId', msg.body);
+                  span.setAttributes({ 'error.type': 'missing_subscription_id' });
+                  return;
+                }
+                result = await workflowRunner.runMicrosoftSync({
+                  subscriptionId: msg.body.subscriptionId,
+                  messageId: msg.body.messageId,
+                  changeType: msg.body.changeType,
+                });
+              } else {
+                // Legacy Gmail path — providerId === google only, and only
+                // while the enum entry still exists. No producer fires this
+                // anymore now that GoogleSubscriptionFactory is unregistered,
+                // but kept defensively until Phase 2e drops the enum.
+                span.setAttributes({
+                  'history.id': msg.body.historyId ?? 'missing',
+                  'subscription.name': msg.body.subscriptionName ?? 'missing',
+                });
+                result = await workflowRunner.runMainWorkflow({
+                  providerId,
+                  historyId: msg.body.historyId,
+                  subscriptionName: msg.body.subscriptionName,
+                });
+              }
+
               console.log('[THREAD_QUEUE] result', result);
               span.setAttributes({
                 'workflow.result': typeof result === 'string' ? result : JSON.stringify(result),
