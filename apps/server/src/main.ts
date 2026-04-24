@@ -1304,15 +1304,24 @@ export default class Entry extends WorkerEntrypoint<ZeroEnv> {
 
     await Promise.all(
       allAccounts.map(async ({ id, providerId }) => {
-        const lastSubscribed = await this.env.gmail_sub_age.get(`${id}__${providerId}`);
+        // OutlookSubscriptionFactory writes __expiresAt on subscribe; if the
+        // stored timestamp is within a day of now (or missing), we're near
+        // Graph's ~70h cap and should renew. Previous Gmail flow used
+        // gmail_sub_age with a 5-day window; Graph expires sooner so we
+        // renew more aggressively.
+        const expiresAtStr = await this.env.subscribed_accounts.get(
+          `${id}__${providerId}__expiresAt`,
+        );
 
-        if (lastSubscribed) {
-          const subscriptionDate = new Date(lastSubscribed);
-          if (subscriptionDate < fiveDaysAgo) {
-            console.log(`[SCHEDULED] Found expired Google subscription for connection: ${id}`);
+        if (expiresAtStr) {
+          const expiresAt = new Date(expiresAtStr);
+          const oneDayFromNow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          if (expiresAt < oneDayFromNow) {
+            console.log(`[SCHEDULED] Subscription near expiry — renewing: ${id}`);
             expiredSubscriptions.push({ connectionId: id, providerId: providerId as EProviders });
           }
         } else {
+          // No expiry recorded (never subscribed, or state lost) — enqueue.
           expiredSubscriptions.push({ connectionId: id, providerId: providerId as EProviders });
         }
       }),

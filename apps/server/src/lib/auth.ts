@@ -149,12 +149,14 @@ const connectionHandlerHook = async (account: Account) => {
     );
   }
 
-  if (env.GOOGLE_S_ACCOUNT && env.GOOGLE_S_ACCOUNT !== '{}') {
-    await env.subscribe_queue.send({
-      connectionId: result.id,
-      providerId: account.providerId,
-    });
-  }
+  // Enqueue a subscribe on every new/updated account. With Google gone, the
+  // GOOGLE_S_ACCOUNT gate no longer makes sense; Microsoft subscriptions
+  // don't need a service-account credential and OutlookSubscriptionFactory
+  // handles the Graph subscription creation idempotently.
+  await env.subscribe_queue.send({
+    connectionId: result.id,
+    providerId: account.providerId,
+  });
 };
 
 export const createAuth = () => {

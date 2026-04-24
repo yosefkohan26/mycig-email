@@ -22,11 +22,8 @@ export type ZeroEnv = {
   scheduled_emails: KVNamespace;
   send_email_queue: Queue;
   snoozed_emails: KVNamespace;
-  gmail_sub_age: KVNamespace;
   subscribe_queue: Queue;
   AI: Ai;
-  gmail_history_id: KVNamespace;
-  gmail_processing_threads: KVNamespace;
   subscribed_accounts: KVNamespace;
   connection_labels: KVNamespace;
   prompts_storage: KVNamespace;
@@ -55,8 +52,6 @@ export type ZeroEnv = {
   DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
-  GOOGLE_CLIENT_ID: string;
-  GOOGLE_CLIENT_SECRET: string;
   RESEND_API_KEY: string;
   VITE_PUBLIC_POSTHOG_KEY: string;
   VITE_PUBLIC_POSTHOG_HOST: string;
@@ -64,8 +59,6 @@ export type ZeroEnv = {
   BETTER_AUTH_TRUSTED_ORIGINS: string;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
-  GOOGLE_REDIRECT_URI: string;
-  GOOGLE_APPLICATION_CREDENTIALS: string;
   HISTORY_OFFSET: string;
   ZERO_CLIENT_ID: string;
   ZERO_CLIENT_SECRET: string;
@@ -77,7 +70,6 @@ export type ZeroEnv = {
   COMPOSIO_API_KEY: string;
   GROQ_API_KEY: string;
   EARLY_ACCESS_ENABLED: string;
-  GOOGLE_GENERATIVE_AI_API_KEY: string;
   AUTUMN_SECRET_KEY: string;
   AI_SYSTEM_PROMPT: string;
   PERPLEXITY_API_KEY: string;
@@ -93,7 +85,6 @@ export type ZeroEnv = {
   OPENAI_MODEL: string;
   OPENAI_MINI_MODEL: string;
   ANTHROPIC_API_KEY: string;
-  GOOGLE_S_ACCOUNT: string;
   AXIOM_API_TOKEN: string;
   AXIOM_DATASET: string;
   THREADS_BUCKET: R2Bucket;

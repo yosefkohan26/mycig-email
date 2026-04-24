@@ -188,13 +188,20 @@ export class WorkflowRunner extends DurableObject<ZeroEnv> {
         });
       }
 
-      const previousHistoryId = yield* Effect.tryPromise({
-        try: () => this.env.gmail_history_id.get(connectionId),
+      // gmail_history_id KV was retired in Phase 2d. These branches only run
+      // when providerId === EProviders.google, which is unreachable now that
+      // the Google provider is unregistered. Typed through `any` so this
+      // dead code keeps compiling until Phase 2e drops the enum entry.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const legacyEnv = this.env as any;
+      const previousHistoryId: string | null = yield* Effect.tryPromise({
+        try: async (): Promise<string | null> =>
+          (await legacyEnv.gmail_history_id?.get(connectionId)) ?? null,
         catch: () => ({
           _tag: 'WorkflowCreationFailed' as const,
           error: 'Failed to get history ID',
         }),
-      }).pipe(Effect.orElse(() => Effect.succeed(null)));
+      }).pipe(Effect.orElse(() => Effect.succeed<string | null>(null)));
 
       span.setAttributes({ 'history.previous_id': previousHistoryId || 'none' });
 
@@ -248,10 +255,14 @@ export class WorkflowRunner extends DurableObject<ZeroEnv> {
       const historyProcessingKey = `history_${connectionId}__${historyId}`;
       const keysToDelete: string[] = [];
 
-      // Atomic lock acquisition to prevent race conditions
+      // Atomic lock acquisition to prevent race conditions. See note above
+      // about legacy Gmail KVs; runZeroWorkflow is dead code for Microsoft
+      // until Phase 2e.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const zeroLegacyEnv = this.env as any;
       const lockAcquired = yield* Effect.tryPromise({
         try: async () => {
-          const response = await this.env.gmail_processing_threads.put(
+          const response = await zeroLegacyEnv.gmail_processing_threads?.put(
             historyProcessingKey,
             'true',
             {
@@ -333,7 +344,11 @@ export class WorkflowRunner extends DurableObject<ZeroEnv> {
         yield* Effect.tryPromise({
           try: () => {
             console.log('[ZERO_WORKFLOW] Updating next history ID:', nextHistoryId);
-            return this.env.gmail_history_id.put(connectionId.toString(), nextHistoryId.toString());
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return (this.env as any).gmail_history_id?.put(
+              connectionId.toString(),
+              nextHistoryId.toString(),
+            );
           },
           catch: (error) => ({ _tag: 'WorkflowCreationFailed' as const, error }),
         });

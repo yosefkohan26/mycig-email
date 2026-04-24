@@ -169,12 +169,15 @@ export const mailRouter = router({
       if (threadsResponse.threads.length === 0 && folder === FOLDERS.INBOX && !q) {
         const now = Date.now();
         const cooldownKey = `resync_cooldown_${activeConnection.id}`;
-        const lastResyncStr = await env.gmail_processing_threads.get(cooldownKey);
+        // Cooldown key lives in prompts_storage (generic KV) now that the
+        // gmail_processing_threads KV has been retired. The value shape is
+        // unchanged — just the storage bucket.
+        const lastResyncStr = await env.prompts_storage.get(cooldownKey);
         const lastResync = lastResyncStr ? parseInt(lastResyncStr, 10) : 0;
         const RESYNC_COOLDOWN_MS = 30000;
 
         if (now - lastResync > RESYNC_COOLDOWN_MS) {
-          await env.gmail_processing_threads.put(cooldownKey, now.toString(), {
+          await env.prompts_storage.put(cooldownKey, now.toString(), {
             expirationTtl: 60,
           });
 
