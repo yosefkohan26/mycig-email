@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "zero-server",
+  "name": "mycig-email-server",
   "compatibility_date": "2025-05-01",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/main.ts",
@@ -19,17 +19,17 @@
       "vectorize": [
         {
           "binding": "VECTORIZE",
-          "index_name": "threads-vector-staging",
+          "index_name": "mycig-threads-staging",
         },
         {
           "binding": "VECTORIZE_MESSAGE",
-          "index_name": "messages-vector-staging",
+          "index_name": "mycig-messages-staging",
         },
       ],
       "r2_buckets": [
         {
           "binding": "THREADS_BUCKET",
-          "bucket_name": "threads-staging",
+          "bucket_name": "mycig-email-threads-staging",
         },
       ],
       "durable_objects": {
@@ -243,11 +243,11 @@
       "vectorize": [
         {
           "binding": "VECTORIZE",
-          "index_name": "threads-vector-staging",
+          "index_name": "mycig-threads-staging",
         },
         {
           "binding": "VECTORIZE_MESSAGE",
-          "index_name": "messages-vector-staging",
+          "index_name": "mycig-messages-staging",
         },
       ],
       "limits": {
@@ -305,7 +305,7 @@
       "r2_buckets": [
         {
           "binding": "THREADS_BUCKET",
-          "bucket_name": "threads-staging",
+          "bucket_name": "mycig-email-threads-staging",
         },
       ],
       "queues": {
