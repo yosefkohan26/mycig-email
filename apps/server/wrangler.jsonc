@@ -154,7 +154,7 @@
       "hyperdrive": [
         {
           "binding": "HYPERDRIVE",
-          "id": "57834ddb6716440496c8836f6d99bc9a",
+          "id": "9e1fea07e34c4551a333e3c3146e0fb9",
           "localConnectionString": "postgresql://postgres:postgres@localhost:5432/zerodotemail",
         },
       ],
@@ -186,43 +186,43 @@
       "kv_namespaces": [
         {
           "binding": "gmail_history_id",
-          "id": "4e814c70e35d413d99c923029928efae",
+          "id": "dc4e8faf5b7b47ccbe34eabab35f903b",
         },
         {
           "binding": "gmail_processing_threads",
-          "id": "b7db3a98a80f4e16a8b6edc5fa8c7b76",
+          "id": "dee2a2e7858b4381bbc483d922aeaba0",
         },
         {
           "binding": "subscribed_accounts",
-          "id": "7e6eadacf19c4c56a9ec3c357adb584a",
+          "id": "1b16ec53f6194eee982ecd4beb5b3773",
         },
         {
           "binding": "connection_labels",
-          "id": "4d3a28d3265a4388aae2e9e9b534d019",
+          "id": "ff15433d59424eebbdb8352240a5236e",
         },
         {
           "binding": "prompts_storage",
-          "id": "620e710aaea744e59df4788f9ec18ff9",
+          "id": "bcc73977741545e6ade49f7ccfbb1efe",
         },
         {
           "binding": "gmail_sub_age",
-          "id": "c55e692bb71d4e5bae23dded092b09d5",
+          "id": "792832b7ea7541d1947ff819101a6380",
         },
         {
           "binding": "pending_emails_status",
-          "id": "7f277903ebab4b4d89f5d59b1f531073",
+          "id": "ba8ed19178d04f27b4cd1851fd6ea1f6",
         },
         {
           "binding": "pending_emails_payload",
-          "id": "d5da698931524da9992fe398e095fc32",
+          "id": "dceb2b97257f4b2fa4331206fa63c41e",
         },
         {
           "binding": "scheduled_emails",
-          "id": "444cad0e54114635b5199ffae9542bd5",
+          "id": "df9637af54db4342ae601fcaf3d73db9",
         },
         {
           "binding": "snoozed_emails",
-          "id": "f3a30ed7198542d890db172536bade33",
+          "id": "d8d101e234744aa5a56c72ded06ee724",
         },
       ],
     },
@@ -384,7 +384,7 @@
       "hyperdrive": [
         {
           "binding": "HYPERDRIVE",
-          "id": "57834ddb6716440496c8836f6d99bc9a",
+          "id": "9e1fea07e34c4551a333e3c3146e0fb9",
           "localConnectionString": "postgresql://postgres:postgres@localhost:5432/zerodotemail",
         },
       ],
@@ -407,43 +407,43 @@
       "kv_namespaces": [
         {
           "binding": "gmail_history_id",
-          "id": "4e814c70e35d413d99c923029928efae",
+          "id": "dc4e8faf5b7b47ccbe34eabab35f903b",
         },
         {
           "binding": "gmail_processing_threads",
-          "id": "b7db3a98a80f4e16a8b6edc5fa8c7b76",
+          "id": "dee2a2e7858b4381bbc483d922aeaba0",
         },
         {
           "binding": "subscribed_accounts",
-          "id": "7e6eadacf19c4c56a9ec3c357adb584a",
+          "id": "1b16ec53f6194eee982ecd4beb5b3773",
         },
         {
           "binding": "connection_labels",
-          "id": "4d3a28d3265a4388aae2e9e9b534d019",
+          "id": "ff15433d59424eebbdb8352240a5236e",
         },
         {
           "binding": "prompts_storage",
-          "id": "620e710aaea744e59df4788f9ec18ff9",
+          "id": "bcc73977741545e6ade49f7ccfbb1efe",
         },
         {
           "binding": "gmail_sub_age",
-          "id": "c55e692bb71d4e5bae23dded092b09d5",
+          "id": "792832b7ea7541d1947ff819101a6380",
         },
         {
           "binding": "pending_emails_status",
-          "id": "7f277903ebab4b4d89f5d59b1f531073",
+          "id": "ba8ed19178d04f27b4cd1851fd6ea1f6",
         },
         {
           "binding": "pending_emails_payload",
-          "id": "d5da698931524da9992fe398e095fc32",
+          "id": "dceb2b97257f4b2fa4331206fa63c41e",
         },
         {
           "binding": "scheduled_emails",
-          "id": "444cad0e54114635b5199ffae9542bd5",
+          "id": "df9637af54db4342ae601fcaf3d73db9",
         },
         {
           "binding": "snoozed_emails",
-          "id": "f3a30ed7198542d890db172536bade33",
+          "id": "d8d101e234744aa5a56c72ded06ee724",
         },
       ],
     },
