@@ -199,3 +199,94 @@ export function matterIntelMailroom(
     `/api/v1/matter-intel/mailroom?${q.toString()}`,
   );
 }
+
+// --- Email ingest ----------------------------------------------------------
+// Matches MyCIG backend handlers/matter_intel.go IngestEmailRequest/Response.
+// Zero's runMicrosoftSync calls this per Graph change notification to
+// persist the message into MyCIG's emails table so the AI classifier batch
+// job can pick it up on its next poll.
+
+export type EmailAddress = { address: string; name?: string };
+
+export type IngestEmailPayload = {
+  /** MyCIG user id whose mailbox this is. Required. */
+  userId: string;
+  /** Provider message id (Graph `message.id`). Required. */
+  messageId: string;
+  /** RFC 5322 Message-ID header (optional — used for cross-mailbox dedup). */
+  internetMessageId?: string;
+  /** Graph conversationId (optional). */
+  threadId?: string;
+  subject: string;
+  fromAddress: string;
+  fromName?: string;
+  to?: EmailAddress[];
+  cc?: EmailAddress[];
+  bcc?: EmailAddress[];
+  bodyText?: string;
+  bodyHtml?: string;
+  bodyPreview?: string;
+  /** RFC3339. Required — the server rejects non-parseable timestamps. */
+  receivedAt: string;
+  isRead?: boolean;
+  isSent?: boolean;
+  hasAttachments?: boolean;
+  /** 'low' | 'normal' | 'high'. Defaults to 'normal' server-side. */
+  importance?: 'low' | 'normal' | 'high';
+  /** Defaults to 'ms_graph' server-side. */
+  source?: string;
+  /** Defaults to 'inbox' server-side. */
+  folder?: string;
+  /** Pre-derived category (e.g. Case-2026-042). Nil lets AI classify. */
+  classificationCategory?: string;
+  /** Free-form jsonb — e.g. Graph etag, sync cycle id. */
+  ingestionMetadata?: Record<string, unknown>;
+};
+
+export type IngestEmailResult = {
+  email_id: string;
+  subject: string;
+  already_classified: boolean;
+};
+
+/**
+ * Upsert an email into MyCIG. Idempotent — the server's ON CONFLICT on
+ * (user_id, message_id) merges instead of duplicating. Safe to call on
+ * every Graph notification without pre-filtering.
+ */
+export function matterIntelIngestEmail(
+  cfg: MatterIntelConfig,
+  payload: IngestEmailPayload,
+) {
+  // Translate camelCase -> snake_case for the Go handler shape.
+  const body = {
+    user_id: payload.userId,
+    message_id: payload.messageId,
+    internet_message_id: payload.internetMessageId,
+    thread_id: payload.threadId,
+    subject: payload.subject,
+    from_address: payload.fromAddress,
+    from_name: payload.fromName ?? '',
+    to_addresses: payload.to,
+    cc_addresses: payload.cc,
+    bcc_addresses: payload.bcc,
+    body_text: payload.bodyText,
+    body_html: payload.bodyHtml,
+    body_preview: payload.bodyPreview,
+    received_at: payload.receivedAt,
+    is_read: payload.isRead ?? false,
+    is_sent: payload.isSent ?? false,
+    has_attachments: payload.hasAttachments ?? false,
+    importance: payload.importance ?? 'normal',
+    source: payload.source ?? 'ms_graph',
+    folder: payload.folder ?? 'inbox',
+    classification_category: payload.classificationCategory,
+    ingestion_metadata: payload.ingestionMetadata,
+  };
+  return matterIntelCall<{ success: boolean; data: IngestEmailResult }>(
+    cfg,
+    'POST',
+    '/api/v1/matter-intel/emails',
+    body,
+  );
+}
