@@ -1,5 +1,6 @@
 import {
   deleteActiveConnection,
+  escapeGraphSearch,
   FatalErrors,
   fromBase64Url,
   sanitizeContext,
@@ -232,96 +233,118 @@ export class OutlookMailManager implements MailManager {
     labelIds?: string[];
     pageToken?: string;
   }) {
-    const { folder, query: q, maxResults = 100, pageToken } = params;
+    const { folder, query, maxResults = 100, pageToken } = params;
+    // Graph caps $top at 1000 for message collections; accept a user-supplied
+    // value but clamp to that window.
+    const top = Math.min(Math.max(maxResults, 1), 1000);
+    const selectFields =
+      'id,subject,from,toRecipients,ccRecipients,bccRecipients,sentDateTime,' +
+      'receivedDateTime,isRead,hasAttachments,internetMessageId,conversationId,' +
+      'inferenceClassification,categories,parentFolderId,bodyPreview,lastModifiedDateTime';
 
-    let folderId = this.getOutlookFolderId(folder);
-    if (!folderId) {
-      folderId = folder;
-    }
-
-    let request = this.graphClient.api(`/me/mailFolders/${folderId}/messages`).top(maxResults);
-
-    // if (q) {
-    //   request = request.search(`"${q}"`);
-    // }
-
-    request = request.select(
-      'id,subject,from,toRecipients,ccRecipients,bccRecipients,sentDateTime,receivedDateTime,isRead,internetMessageId,inferenceClassification,categories,parentFolderId',
-    );
-
-    if (maxResults > 0) {
-      request = request.top(maxResults);
-    }
+    // When paging, pageToken is the opaque @odata.nextLink URL — pass it
+    // verbatim to the SDK. Otherwise build a fresh query against the folder.
+    let request;
     if (pageToken) {
-      console.warn(
-        'Outlook pagination typically uses @odata.nextLink (full URL). pageToken needs to be handled accordingly.',
-      );
+      request = this.graphClient.api(pageToken);
+    } else {
+      const folderId = this.getOutlookFolderId(folder) ?? folder;
+      request = this.graphClient
+        .api(`/me/mailFolders/${folderId}/messages`)
+        .top(top)
+        .select(selectFields);
+      if (query) {
+        // $search is mutually exclusive with $orderby on Graph; quoted phrase
+        // search is the safest shape and reduces KQL-injection surface.
+        request = request.search(`"${escapeGraphSearch(query)}"`);
+      } else {
+        request = request.orderby('receivedDateTime desc');
+      }
     }
-
-    // request = request.orderby('receivedDateTime desc');
 
     return this.withErrorHandler(
       'list',
       async () => {
         const res = await request.get();
-
-        // console.log(JSON.stringify(res, null, 4));
-
-        const messages: Message[] = res.value;
+        const messages: Message[] = res.value ?? [];
         const nextPageLink: string | undefined = res['@odata.nextLink'];
 
-        // First parse all messages to get basic info
-        const parsedMessages = await Promise.all(
-          messages.map((msg) => this.parseOutlookMessage(msg)),
-        );
-
-        // Then fetch full content for each message
-        const fullMessages = await Promise.all(
-          messages.map(async (msg, index) => {
-            try {
-              // Get the full message content using the get method
-              const fullMessage = await this.get(msg.id || '');
-              return {
-                ...parsedMessages[index],
-                ...fullMessage.latest,
-                decodedBody: fullMessage.latest.decodedBody || '',
-              };
-            } catch (error) {
-              console.error(`Failed to fetch full message for ${msg.id}:`, error);
-              // If get fails, fall back to basic message info
-              return {
-                ...parsedMessages[index],
-                body: '',
-                processedHtml: '',
-                blobUrl: '',
-                decodedBody: '',
-                attachments: [],
-              };
-            }
-          }),
-        );
-
-        // Format response according to interface requirements
+        // Return metadata only — callers resolve full body + attachments via
+        // get(id) when the user actually opens a thread. Removes the previous
+        // N+1 fetch that turned every page load into 1 + N Graph calls.
         return {
-          threads: messages.map((msg, index) => ({
+          threads: messages.map((msg) => ({
             id: msg.id || msg.internetMessageId || '',
             historyId: msg.lastModifiedDateTime ?? null,
-            $raw: {
-              ...msg,
-              ...fullMessages[index],
-            },
+            $raw: msg,
           })),
-          nextPageToken: nextPageLink || null,
+          nextPageToken: nextPageLink ?? null,
         };
       },
       {
         folder,
-        q,
+        query,
         maxResults,
         _labelIds: params.labelIds,
         pageToken,
         email: this.config.auth?.email,
       },
+    );
+  }
+
+  /**
+   * Delta sync for a mail folder. First call with an empty deltaLink performs a
+   * full sync and returns the state token; subsequent calls with the prior
+   * token return only changes (adds, updates, and `@removed` tombstones) since
+   * then.
+   *
+   * Graph ref: https://learn.microsoft.com/graph/delta-query-messages
+   *
+   * @param deltaLink  Empty string for first sync; otherwise the opaque URL
+   *                   returned as `deltaLink` from a previous call.
+   * @param folder     Folder slug ("inbox", "sentitems") or Graph folder id.
+   *                   Ignored when deltaLink is supplied — the link encodes it.
+   */
+  public listMessagesDelta(params: { folder?: string; deltaLink?: string; maxResults?: number }) {
+    const { folder = 'inbox', deltaLink, maxResults = 100 } = params;
+    const top = Math.min(Math.max(maxResults, 1), 1000);
+    const selectFields =
+      'id,subject,from,toRecipients,ccRecipients,bccRecipients,sentDateTime,' +
+      'receivedDateTime,isRead,hasAttachments,internetMessageId,conversationId,' +
+      'categories,parentFolderId,lastModifiedDateTime';
+
+    let request;
+    if (deltaLink) {
+      request = this.graphClient.api(deltaLink);
+    } else {
+      const folderId = this.getOutlookFolderId(folder) ?? folder;
+      request = this.graphClient
+        .api(`/me/mailFolders/${folderId}/messages/delta`)
+        .top(top)
+        .select(selectFields);
+    }
+
+    return this.withErrorHandler(
+      'listMessagesDelta',
+      async () => {
+        const res = await request.get();
+        const value = (res.value ?? []) as Array<Message & { '@removed'?: { reason: string } }>;
+        return {
+          // Adds + updates. Present messages show lastModifiedDateTime; caller
+          // upserts by id.
+          changed: value.filter((m) => !m['@removed']),
+          // Tombstones — caller should delete by id. `@removed` carries the
+          // reason ("deleted" | "changed").
+          removed: value
+            .filter((m) => !!m['@removed'])
+            .map((m) => ({ id: m.id ?? '', reason: m['@removed']?.reason ?? 'deleted' })),
+          // Paginate within a delta run via nextLink; when undefined, use
+          // deltaLink as the starting point for the next sync cycle.
+          nextLink: (res['@odata.nextLink'] as string | undefined) ?? null,
+          deltaLink: (res['@odata.deltaLink'] as string | undefined) ?? null,
+        };
+      },
+      { folder, hasDeltaLink: !!deltaLink, maxResults, email: this.config.auth?.email },
     );
   }
   private getOutlookFolderId(folderName: string): string | undefined {

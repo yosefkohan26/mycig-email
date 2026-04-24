@@ -24,6 +24,14 @@ export const deleteActiveConnection = async () => {
 
 export const fromBase64Url = (str: string) => str.replace(/-/g, '+').replace(/_/g, '/');
 
+/**
+ * Escape a user-supplied string so it's safe inside a Graph `$search="..."`
+ * KQL phrase. Double quotes must be escaped; everything else is literal inside
+ * the phrase. Don't use this for raw KQL (unquoted) — it doesn't neutralize
+ * operators like `AND`/`OR`/`NOT` that matter outside the phrase context.
+ */
+export const escapeGraphSearch = (query: string): string => query.replace(/"/g, '\\"');
+
 export const fromBinary = (str: string) =>
   new TextDecoder().decode(toByteArray(str.replace(/-/g, '+').replace(/_/g, '/')));
 
