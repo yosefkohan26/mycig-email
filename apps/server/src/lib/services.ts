@@ -10,17 +10,15 @@ export const resend = () =>
 export const redis = () => new Redis({ url: env.REDIS_URL, token: env.REDIS_TOKEN });
 
 export const twilio = () => {
-  //   if (env.NODE_ENV === 'development' && !forceUseRealService) {
-  //     return {
-  //       messages: {
-  //         send: async (to: string, body: string) =>
-  //           console.log(`[TWILIO:MOCK] Sending message to ${to}: ${body}`),
-  //       },
-  //     };
-  //   }
-
+  // No-op fallback when Twilio creds are absent, matching the resend() pattern
+  // above. MyCIG uses Telnyx for SMS; Twilio will be retired in Phase 2.
   if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_PHONE_NUMBER) {
-    throw new Error('Twilio is not configured correctly');
+    return {
+      messages: {
+        send: async (to: string, body: string) =>
+          console.log(`[TWILIO:NOOP] Would send to ${to}: ${body}`),
+      },
+    };
   }
 
   const send = async (to: string, body: string) => {

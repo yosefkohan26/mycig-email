@@ -28,6 +28,36 @@ export const customProviders: ProviderConfig[] = [
 
 export const authProviders = (env: Record<string, string>): ProviderConfig[] => [
   {
+    id: 'microsoft',
+    name: 'Microsoft',
+    requiredEnvVars: ['MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET'],
+    envVarInfo: [
+      { name: 'MICROSOFT_CLIENT_ID', source: 'Microsoft Azure App ID' },
+      { name: 'MICROSOFT_CLIENT_SECRET', source: 'Microsoft Azure App Password' },
+    ],
+    config: {
+      clientId: env.MICROSOFT_CLIENT_ID,
+      clientSecret: env.MICROSOFT_CLIENT_SECRET,
+      redirectUri: env.MICROSOFT_REDIRECT_URI,
+      scope: [
+        'https://graph.microsoft.com/User.Read',
+        'https://graph.microsoft.com/Mail.ReadWrite',
+        'https://graph.microsoft.com/Mail.Send',
+        'https://graph.microsoft.com/MailboxSettings.ReadWrite',
+        'https://graph.microsoft.com/Contacts.ReadWrite',
+        'https://graph.microsoft.com/People.Read',
+        'https://graph.microsoft.com/Calendars.ReadWrite',
+        'offline_access',
+      ],
+      authority: 'https://login.microsoftonline.com/common',
+      responseType: 'code',
+      prompt: 'consent',
+      loginHint: 'email',
+      disableProfilePhoto: true,
+    },
+    required: true,
+  },
+  {
     id: 'google',
     name: 'Google',
     requiredEnvVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
@@ -47,34 +77,8 @@ export const authProviders = (env: Record<string, string>): ProviderConfig[] => 
       clientId: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
     },
-    required: true,
+    required: false,
   },
-  //   {
-  //     id: 'microsoft',
-  //     name: 'Microsoft',
-  //     requiredEnvVars: ['MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET'],
-  //     envVarInfo: [
-  //       { name: 'MICROSOFT_CLIENT_ID', source: 'Microsoft Azure App ID' },
-  //       { name: 'MICROSOFT_CLIENT_SECRET', source: 'Microsoft Azure App Password' },
-  //     ],
-  //     config: {
-  //       clientId: env.MICROSOFT_CLIENT_ID,
-  //       clientSecret: env.MICROSOFT_CLIENT_SECRET,
-  //       redirectUri: env.MICROSOFT_REDIRECT_URI,
-  //       scope: [
-  //         'https://graph.microsoft.com/User.Read',
-  //         'https://graph.microsoft.com/Mail.ReadWrite',
-  //         'https://graph.microsoft.com/Mail.Send',
-  //         'offline_access',
-  //       ],
-  //       authority: 'https://login.microsoftonline.com/common',
-  //       responseType: 'code',
-  //       prompt: 'consent',
-  //       loginHint: 'email',
-  //       disableProfilePhoto: true,
-  //     },
-  //     required: false,
-  //   },
 ];
 
 export function isProviderEnabled(provider: ProviderConfig, env: Record<string, string>): boolean {

@@ -15,14 +15,12 @@ services:
 
   valkey:
     container_name: zerodotemail-redis
-    image: docker.io/bitnami/valkey:8.0
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
-      - VALKEY_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+    # bitnami/valkey was pulled from Docker Hub in 2025; use the official image.
+    image: valkey/valkey:8.0
     ports:
       - 6379:6379
     volumes:
-      - valkey-data:/bitnami/valkey/data
+      - valkey-data:/data
 
   upstash-proxy:
     container_name: zerodotemail-upstash-proxy
