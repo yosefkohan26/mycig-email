@@ -15,11 +15,30 @@ import {
   createDefaultWorkflows,
   type WorkflowContext,
 } from './thread-workflow-utils/workflow-engine';
-import { getServiceAccount } from './lib/factories/google-subscription.factory';
 import { getThread, getZeroAgent } from './lib/server-utils';
 import { DurableObject } from 'cloudflare:workers';
 import { bulkDeleteKeys } from './lib/bulk-delete';
-import { type gmail_v1 } from '@googleapis/gmail';
+
+// Google/Gmail support was retired in Phase 2c. This file is Gmail-shaped
+// (subscription-name matching, historyId sync) and is now effectively dead
+// code — kept compiling via stubs until Phase 2d replaces it with a
+// Microsoft-native pipeline built on OutlookMailManager.listMessagesDelta.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const getServiceAccount = (): { project_id: string } => {
+  throw new Error('Google service account support removed — Microsoft-native pipeline pending (Phase 2d)');
+};
+// Legacy Gmail history type shim. The code paths that touch these types are
+// gated behind `providerId === EProviders.google` and are unreachable now
+// that the Google provider is unregistered. Typed as `any` to avoid having
+// to reconstruct the full Gmail shape for dead code — Phase 2d deletes the
+// branches outright when we ship the Microsoft-native pipeline.
+// eslint-disable-next-line @typescript-eslint/no-namespace
+namespace gmail_v1 {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  export type Schema$History = any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  export type Schema$Message = any;
+}
 import { Effect, Console, Logger } from 'effect';
 import { connection } from './db/schema';
 import { EProviders } from './types';
@@ -351,22 +370,28 @@ export class WorkflowRunner extends DurableObject<ZeroEnv> {
           labelChange.labelIds.forEach((labelId) => targetSet.add(labelId));
         };
 
-        history.forEach((historyItem) => {
+        // Gmail history types are `any` since Phase 2c — this block is dead
+        // code for Microsoft connections. Explicit lambda-param annotations
+        // kept so strict implicit-any rules are satisfied.
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        history.forEach((historyItem: any) => {
           // Extract thread IDs from messages
-          historyItem.messagesAdded?.forEach((msg) => {
+          historyItem.messagesAdded?.forEach((msg: any) => {
             if (msg.message?.labelIds?.includes('DRAFT')) return;
-            // if (msg.message?.labelIds?.includes('SPAM')) return;
             if (msg.message?.threadId) {
               threadsAdded.add(msg.message.threadId);
             }
           });
 
           // Process label changes using shared helper
-          historyItem.labelsAdded?.forEach((labelAdded) => processLabelChange(labelAdded, true));
-          historyItem.labelsRemoved?.forEach((labelRemoved) =>
+          historyItem.labelsAdded?.forEach((labelAdded: any) =>
+            processLabelChange(labelAdded, true),
+          );
+          historyItem.labelsRemoved?.forEach((labelRemoved: any) =>
             processLabelChange(labelRemoved, false),
           );
         });
+        /* eslint-enable @typescript-eslint/no-explicit-any */
 
         yield* Console.log(
           '[ZERO_WORKFLOW] Found unique thread IDs:',

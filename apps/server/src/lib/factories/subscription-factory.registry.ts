@@ -1,16 +1,10 @@
 import { OutlookSubscriptionFactory } from './outlook-subscription.factory';
-import { GoogleSubscriptionFactory } from './google-subscription.factory';
 import { BaseSubscriptionFactory } from './base-subscription.factory';
 import { EProviders } from '../../types';
 
-// Provider factory registry
+// Provider factory registry. Google/Gmail has been retired — only Microsoft.
 const subscriptionFactoryRegistry = new Map<EProviders, BaseSubscriptionFactory>();
 
-// Register Google factory
-const googleFactory = new GoogleSubscriptionFactory();
-subscriptionFactoryRegistry.set(EProviders.google, googleFactory);
-
-// Register Microsoft / Outlook factory
 const outlookFactory = new OutlookSubscriptionFactory();
 subscriptionFactoryRegistry.set(EProviders.microsoft, outlookFactory);
 
@@ -27,4 +21,4 @@ export function getAllRegisteredProviders(): EProviders[] {
 }
 
 // Export individual factories for direct access if needed
-export { googleFactory, outlookFactory };
+export { outlookFactory };

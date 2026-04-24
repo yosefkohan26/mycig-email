@@ -1312,6 +1312,78 @@ export class OutlookMailManager implements MailManager {
     }
   }
   listHistory<T>(historyId: string): Promise<{ history: T[]; historyId: string }> {
+    // Gmail-era shape — for Microsoft, callers should use listMessagesDelta.
+    // Kept only to satisfy the MailManager interface until the interface is
+    // refactored away from Gmail terminology.
     return Promise.resolve({ history: [], historyId });
+  }
+
+  // --- Methods required by the MailManager interface --------------------------
+  // Previously transitively satisfied by GoogleMailManager's matching shape;
+  // surfaced as TS errors once Gmail was removed in Phase 2c.
+
+  /** Enumerate attachments on a message with metadata + base64 body. */
+  public getMessageAttachments(id: string) {
+    return this.withErrorHandler(
+      'getMessageAttachments',
+      async () => {
+        // fileAttachment is the only $odata.type that carries contentBytes —
+        // itemAttachment (nested messages) and referenceAttachment (OneDrive
+        // links) are deliberately skipped since they have no file body to
+        // return in this shape.
+        const res = await this.graphClient.api(`/me/messages/${id}/attachments`).get();
+        type Att = {
+          id?: string;
+          name?: string;
+          contentType?: string;
+          size?: number;
+          contentBytes?: string;
+          '@odata.type'?: string;
+        };
+        const items: Att[] = res.value ?? [];
+        return items
+          .filter(
+            (a) =>
+              a['@odata.type']?.toLowerCase().includes('fileattachment') &&
+              !!a.id &&
+              !!a.contentBytes,
+          )
+          .map((a) => ({
+            filename: a.name ?? '',
+            mimeType: a.contentType ?? 'application/octet-stream',
+            size: a.size ?? 0,
+            attachmentId: a.id ?? '',
+            // Graph doesn't expose per-attachment MIME headers; return empty
+            // so callers that iterate don't blow up on undefined.
+            headers: [] as { name: string; value: string }[],
+            body: a.contentBytes ?? '',
+          }));
+      },
+      { id, email: this.config.auth?.email },
+    );
+  }
+
+  /**
+   * Return the raw RFC 5322 / MIME source of a message. Useful for re-sending,
+   * forwarding as attachment, and auditing. Graph endpoint: GET
+   * /me/messages/{id}/$value returns text/plain MIME.
+   */
+  public getRawEmail(id: string) {
+    return this.withErrorHandler(
+      'getRawEmail',
+      async () => {
+        // The Graph SDK's generic .get() JSON-parses responses; $value is not
+        // JSON, so fall back to getResponseType + the fetch client.
+        const stream = (await this.graphClient
+          .api(`/me/messages/${id}/$value`)
+          .responseType('text' as never)
+          .get()) as string | Response | ArrayBuffer;
+        if (typeof stream === 'string') return stream;
+        if (stream instanceof ArrayBuffer) return new TextDecoder().decode(stream);
+        if (stream instanceof Response) return await stream.text();
+        return String(stream ?? '');
+      },
+      { id, email: this.config.auth?.email },
+    );
   }
 }

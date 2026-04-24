@@ -57,28 +57,8 @@ export const authProviders = (env: Record<string, string>): ProviderConfig[] => 
     },
     required: true,
   },
-  {
-    id: 'google',
-    name: 'Google',
-    requiredEnvVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
-    envVarInfo: [
-      { name: 'GOOGLE_CLIENT_ID', source: 'Google Cloud Console' },
-      { name: 'GOOGLE_CLIENT_SECRET', source: 'Google Cloud Console' },
-    ],
-    config: {
-      prompt: env.FORCE_GOOGLE_AUTH ? 'consent' : undefined,
-      accessType: 'offline',
-      scope: [
-        'https://mail.google.com/',
-        'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/userinfo.profile',
-        'https://www.googleapis.com/auth/userinfo.email',
-      ],
-      clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET,
-    },
-    required: false,
-  },
+  // Google provider retired — Gmail driver removed in Phase 2c. If Gmail
+  // support needs to return, it goes back here alongside Microsoft.
 ];
 
 export function isProviderEnabled(provider: ProviderConfig, env: Record<string, string>): boolean {
