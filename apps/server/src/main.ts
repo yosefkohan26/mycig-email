@@ -40,6 +40,8 @@ import { trpcServer } from '@hono/trpc-server';
 import { agentsMiddleware } from 'hono-agents';
 import { ZeroMCP } from './routes/agent/mcp';
 import { publicRouter } from './routes/auth';
+import { devSessionRouter } from './routes/dev-session';
+import { mycigAuthMiddleware } from './lib/mycig-auth';
 import { WorkflowRunner } from './pipelines';
 import { autumnApi } from './routes/autumn';
 import { initTracing } from './lib/tracing';
@@ -703,6 +705,8 @@ const api = new Hono<HonoContext>()
     c.set('sessionUser', undefined);
     c.set('auth', undefined as any);
   })
+  .use('*', mycigAuthMiddleware())
+  .route('/', devSessionRouter)
   .route('/ai', aiRouter)
   .route('/autumn', autumnApi)
   .route('/public', publicRouter)

@@ -31,7 +31,15 @@ export type ZeroEnv = {
   connection_labels: KVNamespace;
   prompts_storage: KVNamespace;
   NODE_ENV: 'local' | 'development' | 'production';
-  JWT_SECRET: 'secret';
+  // Shared secret with MyCIG backend for validating the `mycig_session` JWT.
+  // See MyCIG backend config/config.go `JWTSecret`.
+  JWT_SECRET: string;
+  // Issuer + audience claims we enforce on MyCIG-issued JWTs.
+  JWT_ISSUER: string;
+  JWT_AUDIENCE: string;
+  // Dev-only: when 'true' AND NODE_ENV !== 'production', mounts the
+  // POST /dev/session impersonate route. Never set this in production.
+  ALLOW_DEV_IMPERSONATE: 'true' | 'false' | '';
   ELEVENLABS_API_KEY: '1234567890';
   DISABLE_CALLS: 'true' | '';
   DROP_AGENT_TABLES: 'false';
