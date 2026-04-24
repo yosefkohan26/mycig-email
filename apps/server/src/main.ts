@@ -42,6 +42,7 @@ import { ZeroMCP } from './routes/agent/mcp';
 import { publicRouter } from './routes/auth';
 import { devSessionRouter } from './routes/dev-session';
 import { mycigAuthMiddleware } from './lib/mycig-auth';
+import { getSubscriptionFactory } from './lib/factories/subscription-factory.registry';
 import { WorkflowRunner } from './pipelines';
 import { autumnApi } from './routes/autumn';
 import { initTracing } from './lib/tracing';
@@ -874,6 +875,91 @@ const app = new Hono<HonoContext>()
     });
 
     try {
+      const providerId = c.req.param('providerId');
+
+      // Microsoft Graph subscription validation handshake. When Graph creates
+      // a subscription it POSTs to the notificationUrl with ?validationToken=...
+      // and expects the token echoed back as text/plain within 10s. Must come
+      // BEFORE any Authorization check — Graph sends no auth header for the
+      // handshake OR for actual notifications; identity is carried in clientState.
+      if (providerId === EProviders.microsoft) {
+        const validationToken = c.req.query('validationToken');
+        if (validationToken) {
+          span.setAttributes({ 'msft.handshake': 'validation' });
+          return new Response(validationToken, {
+            status: 200,
+            headers: { 'Content-Type': 'text/plain' },
+          });
+        }
+
+        if (env.DISABLE_WORKFLOWS === 'true') {
+          span.setAttributes({ 'workflows.disabled': true });
+          return c.json({ message: 'OK' }, { status: 200 });
+        }
+
+        type GraphNotification = {
+          subscriptionId?: string;
+          subscriptionExpirationDateTime?: string;
+          changeType?: string;
+          resource?: string;
+          resourceData?: { id?: string; '@odata.type'?: string; '@odata.id'?: string };
+          clientState?: string;
+          tenantId?: string;
+        };
+        let body: { value?: GraphNotification[]; validationTokens?: string[] };
+        try {
+          body = await c.req.json();
+        } catch {
+          span.setAttributes({ 'msft.body': 'invalid_json' });
+          return c.json({ error: 'invalid body' }, { status: 400 });
+        }
+
+        const notifications = Array.isArray(body.value) ? body.value : [];
+        span.setAttributes({ 'msft.notifications.count': notifications.length });
+
+        // Authenticate each notification via the per-subscription clientState
+        // we stashed in KV at subscribe time. Graph recycles the same handler
+        // for lifecycle events (reauthorizationRequired, subscriptionRemoved),
+        // which also carry clientState, so the same check applies.
+        const outlookFactory = getSubscriptionFactory(EProviders.microsoft);
+        const validated: GraphNotification[] = [];
+        for (const n of notifications) {
+          if (!n.clientState) continue;
+          const ok = await outlookFactory.verifyToken(n.clientState);
+          if (!ok) {
+            console.warn('[MICROSOFT] clientState mismatch', {
+              subscriptionId: n.subscriptionId,
+            });
+            continue;
+          }
+          validated.push(n);
+        }
+        span.setAttributes({ 'msft.notifications.validated': validated.length });
+
+        // Enqueue. Workers queue send-batch is up to 100 at a time; Graph's
+        // per-notification batch is small (≤ a few dozen) so one-by-one is fine.
+        for (const n of validated) {
+          try {
+            await env.thread_queue.send({
+              providerId,
+              subscriptionId: n.subscriptionId,
+              resource: n.resource,
+              changeType: n.changeType,
+              messageId: n.resourceData?.id,
+            });
+          } catch (error) {
+            console.error('[MICROSOFT] queue.send failed', { error, n });
+            span.recordException(error as Error);
+          }
+        }
+
+        // Per Graph contract: respond 202 within 30s regardless of downstream
+        // processing, else the subscription gets disabled after repeated
+        // failures.
+        return c.body(null, 202);
+      }
+
+      // --- Google / default path (unchanged behavior) ---
       if (!c.req.header('Authorization')) {
         span.setAttributes({ 'auth.status': 'missing' });
         return c.json({ error: 'Unauthorized' }, { status: 401 });
@@ -882,7 +968,6 @@ const app = new Hono<HonoContext>()
         span.setAttributes({ 'workflows.disabled': true });
         return c.json({ message: 'OK' }, { status: 200 });
       }
-      const providerId = c.req.param('providerId');
       if (providerId === EProviders.google) {
         const body = await c.req.json<{ historyId: string }>();
         const subHeader = c.req.header('x-goog-pubsub-subscription-name');
