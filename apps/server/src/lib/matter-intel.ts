@@ -290,3 +290,40 @@ export function matterIntelIngestEmail(
     body,
   );
 }
+
+// --- Assign email to a case ----------------------------------------------
+// Calls EmailsHandler.AssignEmailForUser via the matter-intel envelope.
+// Handles sibling dedup, thread bulk-assign, body lazy-fetch, activity
+// log, attachment import, and Outlook category writeback server-side.
+
+export type AssignEmailResult = {
+  // Server returns the email row via models.EmailResponse. Only the fields
+  // Zero is likely to act on are typed here; the rest pass through as
+  // `[k: string]: unknown`.
+  id: string;
+  project_id?: string | null;
+  message_id?: string;
+  thread_id?: string | null;
+  internet_message_id?: string | null;
+  subject?: string | null;
+  has_attachments?: boolean;
+  [k: string]: unknown;
+};
+
+/**
+ * Assign an email to a case. Idempotent — re-assigning to the same project
+ * is a no-op. Returns the updated email row on success; 404 when the
+ * email or project doesn't exist.
+ */
+export function matterIntelAssignEmail(
+  cfg: MatterIntelConfig,
+  emailId: string,
+  payload: { userId: string; projectId: string },
+) {
+  return matterIntelCall<{ success: boolean; data: AssignEmailResult }>(
+    cfg,
+    'POST',
+    `/api/v1/matter-intel/emails/${encodeURIComponent(emailId)}/assign`,
+    { user_id: payload.userId, project_id: payload.projectId },
+  );
+}
