@@ -76,9 +76,10 @@ export async function matterIntelCall<T = unknown>(
   const nonce = newNonce();
   const bodyHash = await sha256Hex(bodyBytes);
 
-  // IMPORTANT: the server signs the request path only (no query string,
-  // no fragment). Match that here — any ?foo=bar in callers must be baked
-  // into the path string before calling. See service_auth.go: r.URL.Path.
+  // The `path` param here is the full request-target (path + raw query
+  // string), matching Go's r.URL.RequestURI() on the server side. Query
+  // params are part of the signature so an attacker can't swap `?user_id=X`
+  // for `?user_id=Y` on a signed request.
   const canonical = [method, path, timestamp, nonce, bodyHash].join('\n');
   const signature = await hmacSha256Hex(cfg.secret, canonical);
 
@@ -141,4 +142,60 @@ export type HealthResponse = {
 
 export function matterIntelHealth(cfg: MatterIntelConfig) {
   return matterIntelCall<HealthResponse>(cfg, 'GET', '/api/v1/matter-intel/health');
+}
+
+// --- Mailroom --------------------------------------------------------------
+// Matches MyCIG backend handlers/matter_intel.go MailroomResponse. MyCIG
+// wraps responses in an APIResponse envelope, so the data we care about
+// sits under `data`. Callers unpack that — see matterIntelMailroom below.
+
+export type MailroomEmailResponse = {
+  id: string;
+  user_id?: string;
+  project_id?: string | null;
+  message_id?: string;
+  thread_id?: string | null;
+  internet_message_id?: string | null;
+  subject?: string | null;
+  from_address?: string | null;
+  from_name?: string | null;
+  received_at?: string | null;
+  ai_suggested_project_id?: string | null;
+  ai_classification_confidence?: number | null;
+  ai_classification_reasoning?: string | null;
+  // Additional fields exist on the server side — typed as-needed. Keep this
+  // shape conservative so callers don't rely on fields that may disappear.
+  [k: string]: unknown;
+};
+
+export type MailroomResponse = {
+  emails: MailroomEmailResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type MailroomFilter = 'all' | 'suggestions' | 'errors' | 'unclassified';
+
+/**
+ * Read a user's mailroom queue. `filter` defaults to 'all' on the server
+ * when omitted. `limit` is clamped to [1, 200] server-side; sending a value
+ * outside that range silently falls back to the 50 default.
+ */
+export function matterIntelMailroom(
+  cfg: MatterIntelConfig,
+  params: { userId: string; filter?: MailroomFilter; limit?: number; offset?: number },
+) {
+  const q = new URLSearchParams();
+  q.set('user_id', params.userId);
+  if (params.filter) q.set('filter', params.filter);
+  if (params.limit !== undefined) q.set('limit', String(params.limit));
+  if (params.offset !== undefined) q.set('offset', String(params.offset));
+  // MyCIG wraps success in { success: true, data: ... }. Declaring that here
+  // so callers can pluck `.data` without a second type gymnastic.
+  return matterIntelCall<{ success: boolean; data: MailroomResponse }>(
+    cfg,
+    'GET',
+    `/api/v1/matter-intel/mailroom?${q.toString()}`,
+  );
 }
