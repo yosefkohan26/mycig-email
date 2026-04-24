@@ -28,7 +28,7 @@ const getServiceAccount = (): { project_id: string } => {
   throw new Error('Google service account support removed — Microsoft-native pipeline pending (Phase 2d)');
 };
 // Legacy Gmail history type shim. The code paths that touch these types are
-// gated behind `providerId === EProviders.google` and are unreachable now
+// gated behind `providerId === ('google' as unknown as EProviders)` and are unreachable now
 // that the Google provider is unregistered. Typed as `any` to avoid having
 // to reconstruct the full Gmail shape for dead code — Phase 2d deletes the
 // branches outright when we ship the Microsoft-native pipeline.
@@ -361,7 +361,7 @@ export class WorkflowRunner extends DurableObject<ZeroEnv> {
       }
 
       // gmail_history_id KV was retired in Phase 2d. These branches only run
-      // when providerId === EProviders.google, which is unreachable now that
+      // when providerId === ('google' as unknown as EProviders), which is unreachable now that
       // the Google provider is unregistered. Typed through `any` so this
       // dead code keeps compiling until Phase 2e drops the enum entry.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -377,7 +377,7 @@ export class WorkflowRunner extends DurableObject<ZeroEnv> {
 
       span.setAttributes({ 'history.previous_id': previousHistoryId || 'none' });
 
-      if (providerId === EProviders.google) {
+      if (providerId === ('google' as unknown as EProviders)) {
         yield* Console.log('[MAIN_WORKFLOW] Processing Google provider workflow');
         yield* Console.log('[MAIN_WORKFLOW] Previous history ID:', previousHistoryId);
 
@@ -498,7 +498,7 @@ export class WorkflowRunner extends DurableObject<ZeroEnv> {
         catch: (error) => ({ _tag: 'DatabaseError' as const, error }),
       });
 
-      if (foundConnection.providerId === EProviders.google) {
+      if (foundConnection.providerId === ('google' as unknown as EProviders)) {
         yield* Console.log('[ZERO_WORKFLOW] Processing Google provider workflow');
 
         const history = yield* Effect.tryPromise({
@@ -781,7 +781,7 @@ export class WorkflowRunner extends DurableObject<ZeroEnv> {
       const { connectionId, threadId, providerId } = params;
       const keysToDelete: string[] = [];
 
-      if (providerId === EProviders.google) {
+      if (providerId === ('google' as unknown as EProviders)) {
         yield* Console.log('[THREAD_WORKFLOW] Processing Google provider workflow');
         const { db, conn } = createDb(this.env.HYPERDRIVE.connectionString);
 
@@ -939,7 +939,7 @@ export class WorkflowRunner extends DurableObject<ZeroEnv> {
       const { connectionId, threadId, providerId } = params;
       const keysToDelete: string[] = [];
 
-      if (providerId === EProviders.google) {
+      if (providerId === ('google' as unknown as EProviders)) {
         console.log('[THREAD_WORKFLOW] Processing Google provider workflow');
         const { db, conn } = createDb(this.env.HYPERDRIVE.connectionString);
 

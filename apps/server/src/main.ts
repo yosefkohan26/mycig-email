@@ -968,7 +968,7 @@ const app = new Hono<HonoContext>()
         span.setAttributes({ 'workflows.disabled': true });
         return c.json({ message: 'OK' }, { status: 200 });
       }
-      if (providerId === EProviders.google) {
+      if (providerId === ('google' as unknown as EProviders)) {
         const body = await c.req.json<{ historyId: string }>();
         const subHeader = c.req.header('x-goog-pubsub-subscription-name');
 

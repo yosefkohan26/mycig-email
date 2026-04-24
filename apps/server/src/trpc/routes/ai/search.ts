@@ -1,7 +1,4 @@
-import {
-  GmailSearchAssistantSystemPrompt,
-  OutlookSearchAssistantSystemPrompt,
-} from '../../../lib/prompts';
+import { OutlookSearchAssistantSystemPrompt } from '../../../lib/prompts';
 import { activeDriverProcedure } from '../../trpc';
 import { openai } from '@ai-sdk/openai';
 import { generateObject } from 'ai';
@@ -10,16 +7,10 @@ import { z } from 'zod';
 
 export const generateSearchQuery = activeDriverProcedure
   .input(z.object({ query: z.string() }))
-  .mutation(async ({ input, ctx }) => {
-    const {
-      activeConnection: { providerId },
-    } = ctx;
-    const systemPrompt =
-      providerId === 'google'
-        ? GmailSearchAssistantSystemPrompt()
-        : providerId === 'microsoft'
-          ? OutlookSearchAssistantSystemPrompt()
-          : '';
+  .mutation(async ({ input }) => {
+    // Google path retired in Phase 2e. Microsoft is the only supported
+    // provider today.
+    const systemPrompt = OutlookSearchAssistantSystemPrompt();
 
     const result = await generateObject({
       model: openai(env.OPENAI_MODEL || 'gpt-4o'),
