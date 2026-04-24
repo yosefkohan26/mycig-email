@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import type { HonoContext } from '../ctx';
 import { clearMyCIGCookie, setMyCIGCookie, signMyCIGJWT, type MyCIGClaims } from '../lib/mycig-auth';
+import { matterIntelFromEnv, matterIntelHealth } from '../lib/matter-intel';
 
 type ImpersonateBody = Partial<MyCIGClaims> & { user_id: string; email: string };
 
@@ -65,4 +66,26 @@ devSessionRouter.get('/dev/session', async (c) => {
     return c.json({ error: 'dev impersonate disabled' }, 404);
   }
   return c.json({ authenticated: !!c.var.mycigUser, user: c.var.mycigUser ?? null });
+});
+
+// Smoke-tests the HMAC signing + matter-intel connectivity to MyCIG.
+// Returns what /api/v1/matter-intel/health on MyCIG returned, or the error
+// so clock-skew / key-mismatch / base-url issues are visible directly.
+// Dev-only — signing leaks surface area that shouldn't exist in prod.
+devSessionRouter.get('/dev/matter-intel/health', async (c) => {
+  if (c.env.NODE_ENV === 'production' || c.env.ALLOW_DEV_IMPERSONATE !== 'true') {
+    return c.json({ error: 'dev matter-intel disabled' }, 404);
+  }
+  const cfg = matterIntelFromEnv(c.env);
+  if (!cfg) {
+    return c.json(
+      {
+        error:
+          'matter-intel not configured — set MATTER_INTEL_BASE_URL / MATTER_INTEL_KEY_ID / MATTER_INTEL_SECRET',
+      },
+      503,
+    );
+  }
+  const result = await matterIntelHealth(cfg);
+  return c.json({ baseUrl: cfg.baseUrl, keyId: cfg.keyId, result });
 });

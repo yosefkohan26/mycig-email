@@ -37,6 +37,13 @@ export type ZeroEnv = {
   // Dev-only: when 'true' AND NODE_ENV !== 'production', mounts the
   // POST /dev/session impersonate route. Never set this in production.
   ALLOW_DEV_IMPERSONATE: 'true' | 'false' | '';
+  // Matter-Intel client — HMAC-signed calls to MyCIG's /matter-intel/*.
+  // Base URL e.g. https://api.ciglaw.com (prod) or http://localhost:8080 (dev).
+  // Key id + secret must match an entry in MyCIG's MATTER_INTEL_SERVICE_KEYS.
+  // Leaving any blank disables matter-intel calls (local dev without MyCIG).
+  MATTER_INTEL_BASE_URL: string;
+  MATTER_INTEL_KEY_ID: string;
+  MATTER_INTEL_SECRET: string;
   ELEVENLABS_API_KEY: '1234567890';
   DISABLE_CALLS: 'true' | '';
   DROP_AGENT_TABLES: 'false';
